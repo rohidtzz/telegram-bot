@@ -1,5 +1,5 @@
 const axios = require("axios");
-const { DEEPSEEK_API_KEY } = require("../config");
+const { DEEPSEEK_API_KEY, DEEPSEEK_MODEL } = require("../config");
 
 const DEEPSEEK_API_URL = "https://api.deepseek.com/chat/completions";
 
@@ -14,7 +14,7 @@ async function askQuestion(question, systemPrompt = null) {
   const response = await axios.post(
     DEEPSEEK_API_URL,
     {
-      model: "deepseek-chat",
+      model: DEEPSEEK_MODEL,
       messages: [
         {
           role: "system",
@@ -69,7 +69,7 @@ async function askQuestionWithHistory(messages, systemPrompt = null) {
   const response = await axios.post(
     DEEPSEEK_API_URL,
     {
-      model: "deepseek-chat",
+      model: DEEPSEEK_MODEL,
       messages: allMessages,
       temperature: 0.7,
       max_tokens: 1000
