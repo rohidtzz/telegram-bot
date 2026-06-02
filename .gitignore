@@ -1,5 +1,6 @@
 node_modules
 .env
 logs/
+data/
 .pm2/
 PM2_LOG_FILE_PATH

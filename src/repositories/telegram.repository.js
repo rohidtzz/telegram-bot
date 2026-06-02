@@ -32,7 +32,12 @@ async function getUpdates(offset = 0) {
     });
     return response.data.result || [];
   } catch (error) {
-    throw new Error(`Failed to get updates: ${error.message}`);
+    // Create a structured error with status code
+    const statusCode = error?.response?.status;
+    const errorObj = new Error(`Failed to get updates: ${error.message}`);
+    errorObj.statusCode = statusCode;
+    errorObj.response = error?.response;
+    throw errorObj;
   }
 }
 
@@ -62,8 +67,20 @@ async function downloadFile(fileId) {
   }
 }
 
+async function deleteWebhook() {
+  try {
+    const response = await axios.post(buildTelegramUrl("deleteWebhook"), {
+      drop_pending_updates: true
+    });
+    return response.data;
+  } catch (error) {
+    throw new Error(`Failed to delete webhook: ${error.message}`);
+  }
+}
+
 module.exports = {
   sendMessage,
   getUpdates,
-  downloadFile
+  downloadFile,
+  deleteWebhook
 };
