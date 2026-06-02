@@ -1,4 +1,5 @@
 const telegramService = require("../services/telegram.service");
+const { ADMIN_CHAT_ID } = require("../config");
 const logger = require("../utils/logger");
 
 /**
@@ -7,16 +8,16 @@ const logger = require("../utils/logger");
  */
 async function sendMessage(req, res) {
   try {
-    const { chatId, message, parseMode } = req.body;
+    const { message, parseMode } = req.body;
 
-    if (!chatId || !message) {
+    if (!message) {
       return res.status(400).json({
         success: false,
-        message: "chatId and message are required"
+        message: "message is required"
       });
     }
 
-    const result = await telegramService.sendMessage(chatId, message, parseMode);
+    const result = await telegramService.sendMessage(ADMIN_CHAT_ID, message, parseMode);
 
     return res.status(200).json({
       success: true,

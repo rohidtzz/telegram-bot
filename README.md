@@ -1,30 +1,87 @@
-# Telegram Bot API Service
+# Telegram Media Archiver
 
-RESTful API service untuk mengintegrasikan Telegram Bot dan Deepseek AI. Service berjalan di port 3000 dengan JWT authentication.
+Simple personal Telegram bot service untuk mengarsipkan pesan dan media dari Telegram ke S3-compatible storage (AWS S3, Minio, DigitalOcean Spaces, dll).
+
+**Fitur:**
+- 🎯 Webhook-based - menerima update dari Telegram secara real-time
+- 📷 Media storage - simpan foto, video, audio, dokumen ke S3
+- 💬 Send messages - API sederhana untuk mengirim pesan ke Telegram
+- 📝 Structured logging - logging dengan daily rotation
+- 🔧 Simple architecture - tanpa authentication (personal use)
+
+---
+
+## Prerequisites
+
+- Node.js 16+
+- Telegram Bot Token (dari [@BotFather](https://t.me/BotFather))
+- S3-compatible storage (AWS S3, Minio, DigitalOcean Spaces, dll)
+- Public domain/URL untuk webhook (HTTPS recommended)
 
 ## Setup
 
-1. Salin file env:
+### 1. Clone dan install dependencies
 
+```bash
+git clone <your-repo>
+cd telegram-bot
+npm install
+```
+
+### 2. Konfigurasi environment
+
+Salin template environment:
 ```bash
 cp .env.example .env
 ```
 
-2. Isi konfigurasi di `.env`:
-   - `PORT`: Port server (default: 3000)
-   - `JWT_SECRET`: Secret key untuk JWT token (ganti dengan string yang aman)
-   - `BOT_TOKEN`: Token dari BotFather
-   - `MONITORING_CHAT_ID`: Chat ID untuk mengirim pesan
-   - `DEEPSEEK_API_KEY`: API key dari Deepseek
-   - `LOG_LEVEL`: Level logging (error, warn, info, debug)
+Edit `.env` dengan konfigurasi kamu:
 
-3. Install dependencies:
+```env
+# Server
+NODE_ENV=development
+PORT=3000
 
-```bash
-npm install
+# Telegram
+BOT_TOKEN=your_bot_token_from_botfather
+ADMIN_CHAT_ID=your_chat_id
+
+# Optional: Deepseek AI (remove if not using)
+DEEPSEEK_API_KEY=your_deepseek_key
+
+# Webhook
+WEBHOOK_URL=https://your-domain.com/webhooks/telegram
+
+# S3 Storage
+# Untuk AWS S3:
+S3_ENDPOINT=https://s3.amazonaws.com
+S3_REGION=us-east-1
+
+# Atau Minio (local):
+# S3_ENDPOINT=http://localhost:9000
+# S3_REGION=us-east-1
+
+S3_ACCESS_KEY=your_access_key
+S3_SECRET_KEY=your_secret_key
+S3_BUCKET=telegram-media
+S3_USE_SSL=true
+S3_FORCE_PATH_STYLE=false
 ```
 
-## Running the Server
+### 3. Register webhook di Telegram
+
+```bash
+npm run webhook:setup
+```
+
+Atau cek status webhook:
+```bash
+npm run webhook:status
+```
+
+---
+
+## Running
 
 ### Development Mode
 
@@ -40,42 +97,15 @@ Server akan berjalan di `http://localhost:3000`
 npm start
 ```
 
-## API Documentation
+---
 
-### Authentication
-
-Semua endpoint (kecuali `/health` dan `/auth/login`) memerlukan JWT token di header:
-
-```
-Authorization: Bearer <TOKEN>
-```
-
-### Mendapatkan Token (Login)
-
-**Endpoint:** `POST /auth/login`
-
-**Body:**
-```json
-{
-  "username": "admin",
-  "password": "admin"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "expiresIn": "24h"
-}
-```
-
-> **Note:** Default credentials adalah `admin:admin`. Untuk production, ubah ini di code atau gunakan database.
+## API Endpoints
 
 ### Health Check
 
-**Endpoint:** `GET /health`
+```bash
+curl http://localhost:3000/health
+```
 
 **Response:**
 ```json
@@ -85,33 +115,24 @@ Authorization: Bearer <TOKEN>
 }
 ```
 
----
+### Send Message to Telegram
 
-## Telegram API
+**POST** `/api/telegram/send`
 
-### Send Message
+Mengirim pesan ke admin chat (ADMIN_CHAT_ID):
 
-**Endpoint:** `POST /api/telegram/send`
-
-**Headers:**
-```
-Authorization: Bearer <TOKEN>
-Content-Type: application/json
-```
-
-**Body:**
-```json
-{
-  "chatId": "1289660893",
-  "message": "Hello from API",
-  "parseMode": null
-}
+```bash
+curl -X POST http://localhost:3000/api/telegram/send \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Hello from API!",
+    "parseMode": "HTML"
+  }'
 ```
 
 **Parameters:**
-- `chatId` (required): Chat ID untuk mengirim pesan
-- `message` (required): Pesan yang akan dikirim
-- `parseMode` (optional): Format pesan - `Markdown`, `MarkdownV2`, atau `null`
+- `message` (required) - Text pesan
+- `parseMode` (optional) - "HTML" atau "Markdown"
 
 **Response:**
 ```json
@@ -120,26 +141,21 @@ Content-Type: application/json
   "data": {
     "ok": true,
     "result": {
-      "message_id": 12345,
-      "chat": { "id": 1289660893 },
-      "date": 1234567890,
-      "text": "Hello from API"
+      "message_id": 123,
+      "chat": { "id": 1234567 },
+      "text": "Hello from API!"
     }
   }
 }
 ```
 
-### Get Updates
+### Get Telegram Updates (Polling)
 
-**Endpoint:** `GET /api/telegram/updates?offset=0`
+**GET** `/api/telegram/updates`
 
-**Headers:**
+```bash
+curl http://localhost:3000/api/telegram/updates?offset=0
 ```
-Authorization: Bearer <TOKEN>
-```
-
-**Query Parameters:**
-- `offset` (optional): Offset untuk pagination
 
 **Response:**
 ```json
@@ -147,195 +163,254 @@ Authorization: Bearer <TOKEN>
   "success": true,
   "data": [
     {
-      "update_id": 123456789,
+      "update_id": 123456,
       "message": {
         "message_id": 1,
-        "chat": { "id": 1289660893 },
-        "date": 1234567890,
-        "text": "Hello"
+        "chat": { "id": 1234567 },
+        "from": { "id": 789, "first_name": "John" },
+        "text": "Hello bot"
       }
     }
   ]
 }
 ```
 
----
+### Webhook Endpoint (Auto-receive messages)
 
-## Deepseek API
+**POST** `/webhooks/telegram`
 
-### Ask Question
+Telegram akan mengirim update ke endpoint ini secara otomatis.
 
-**Endpoint:** `POST /api/deepseek/ask`
-
-**Headers:**
-```
-Authorization: Bearer <TOKEN>
-Content-Type: application/json
-```
-
-**Body:**
-```json
-{
-  "question": "What is the meaning of life?",
-  "systemPrompt": null
-}
-```
-
-**Parameters:**
-- `question` (required): Pertanyaan untuk AI
-- `systemPrompt` (optional): Custom system prompt untuk AI
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "question": "What is the meaning of life?",
-    "answer": "The meaning of life is a philosophical question that has been pondered for centuries..."
-  }
-}
-```
+**Supported message types:**
+- Text messages
+- Photos (auto-download dan simpan ke S3)
+- Videos (auto-download dan simpan ke S3)
+- Audio (auto-download dan simpan ke S3)
+- Voice messages (auto-download dan simpan ke S3)
+- Documents (auto-download dan simpan ke S3)
 
 ---
 
-## Error Responses
-
-### 400 Bad Request
-```json
-{
-  "success": false,
-  "message": "Invalid request parameters"
-}
-```
-
-### 401 Unauthorized
-```json
-{
-  "success": false,
-  "message": "No token provided"
-}
-```
-
-### 403 Forbidden
-```json
-{
-  "success": false,
-  "message": "Invalid token"
-}
-```
-
-### 500 Internal Server Error
-```json
-{
-  "success": false,
-  "message": "Internal server error",
-  "error": "Error details"
-}
-```
-
----
-
-## Project Structure
+## Architecture
 
 ```
 src/
-├── server.js                 # Entry point (Express server + JWT auth)
+├── server.js                 # Express app setup
 ├── config/
-│   └── index.js             # Configuration & env variables
-├── logger/
-│   └── index.js             # Logging utility
-├── middleware/
-│   └── auth.js              # JWT authentication middleware
-├── routes/
-│   ├── telegram.routes.js   # Telegram API endpoints
-│   └── deepseek.routes.js   # Deepseek AI endpoints
+│   └── index.js             # Environment config
+├── controllers/
+│   ├── telegram.controller.js    # Telegram endpoints
+│   ├── deepseek.controller.js    # Deepseek endpoints
+│   └── webhook.controller.js     # Webhook handler
 ├── services/
-│   └── telegram.service.js  # Telegram service logic
-└── repositories/
-    └── telegram.repository.js # Telegram API calls
+│   ├── telegram.service.js       # Telegram business logic
+│   ├── deepseek.service.js       # Deepseek business logic
+│   └── webhook.service.js        # Webhook processing
+├── repositories/
+│   ├── telegram.repository.js    # Telegram API calls
+│   ├── deepseek.repository.js    # Deepseek API calls
+│   └── s3.repository.js          # S3 file operations
+├── routes/
+│   ├── telegram.routes.js        # /api/telegram routes
+│   ├── deepseek.routes.js        # /api/deepseek routes
+│   └── webhook.routes.js         # /webhooks routes
+├── utils/
+│   └── logger.js                 # Winston logger
+└── scripts/
+    └── setup-webhook.js          # Webhook management
 ```
+
+---
+
+## Webhook Setup Details
+
+### Option 1: Public Server (Production)
+
+```bash
+# Update .env dengan domain kamu
+WEBHOOK_URL=https://your-domain.com/webhooks/telegram
+
+# Setup webhook
+npm run webhook:setup
+```
+
+### Option 2: Local Development with ngrok
+
+```bash
+# Install ngrok
+brew install ngrok
+
+# Terminal 1: Start ngrok
+ngrok http 3000
+# Output: https://abc123.ngrok.io
+
+# Terminal 2: Update .env
+WEBHOOK_URL=https://abc123.ngrok.io/webhooks/telegram
+
+# Setup webhook
+npm run webhook:setup
+```
+
+### Webhook Management Scripts
+
+```bash
+# Setup webhook ke Telegram
+npm run webhook:setup
+
+# Check webhook status
+npm run webhook:status
+
+# Delete webhook (fallback ke polling)
+npm run webhook:delete
+```
+
+---
+
+## S3 Configuration Examples
+
+### AWS S3
+
+```env
+S3_ENDPOINT=https://s3.amazonaws.com
+S3_REGION=ap-southeast-1
+S3_ACCESS_KEY=your_aws_access_key
+S3_SECRET_KEY=your_aws_secret_key
+S3_BUCKET=my-telegram-media
+S3_USE_SSL=true
+S3_FORCE_PATH_STYLE=false
+```
+
+### Minio (Local)
+
+```env
+S3_ENDPOINT=http://localhost:9000
+S3_REGION=us-east-1
+S3_ACCESS_KEY=minioadmin
+S3_SECRET_KEY=minioadmin
+S3_BUCKET=telegram-media
+S3_USE_SSL=false
+S3_FORCE_PATH_STYLE=true
+```
+
+### DigitalOcean Spaces
+
+```env
+S3_ENDPOINT=https://nyc3.digitaloceanspaces.com
+S3_REGION=nyc3
+S3_ACCESS_KEY=your_spaces_key
+S3_SECRET_KEY=your_spaces_secret
+S3_BUCKET=my-space-name
+S3_USE_SSL=true
+S3_FORCE_PATH_STYLE=false
+```
+
+---
 
 ## Logging
 
-Menggunakan custom logger dengan daily log rotation.
+Logs disimpan di folder `/logs/`:
+- `combined-DD-MM-YYYY.log` - All logs
+- `error-DD-MM-YYYY.log` - Error logs only
 
-**Log files:**
-- `logs/combined-YYYY-MM-DD.log` - Semua log
-- `logs/error-YYYY-MM-DD.log` - Error log saja
+Format: JSON dengan timestamp, level, dan message.
 
-Set `LOG_LEVEL` di `.env` untuk mengatur level logging:
-- `debug`: Informasi detail untuk debugging
-- `info`: Informasi umum
-- `warn`: Peringatan
-- `error`: Error saja
+Set log level di `.env`:
+```env
+LOG_LEVEL=debug  # error, warn, info, debug
+```
+
+---
+
+## Scripts
+
+```bash
+# Start server (production)
+npm start
+
+# Development mode (with auto-reload via nodemon)
+npm run dev
+
+# Webhook management
+npm run webhook:setup    # Register webhook to Telegram
+npm run webhook:status   # Check webhook status
+npm run webhook:delete   # Delete webhook
+```
+
+---
+
+## Troubleshooting
+
+### Webhook tidak menerima update
+
+1. Pastikan WEBHOOK_URL sudah set dengan benar (HTTPS public URL, bukan localhost)
+2. Cek status webhook:
+   ```bash
+   npm run webhook:status
+   ```
+3. Cek logs untuk error:
+   ```bash
+   tail -f logs/combined-$(date +%d-%m-%Y).log
+   ```
+
+### Media tidak tersimpan ke S3
+
+1. Cek konfigurasi S3 di `.env`
+2. Pastikan bucket sudah ada
+3. Cek logs untuk error: `tail -f logs/error-*.log`
+4. Pastikan S3 credentials punya permission untuk write
+
+### Pesan gak terkirim
+
+1. Pastikan BOT_TOKEN benar
+2. Pastikan ADMIN_CHAT_ID valid
+3. Cek logs untuk error detail
+
+---
 
 ## Example Usage
 
-### cURL
+### Send Message dengan cURL
 
-#### Login
-```bash
-curl -X POST http://localhost:3000/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin"}'
-```
-
-#### Send Telegram Message
 ```bash
 curl -X POST http://localhost:3000/api/telegram/send \
-  -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
-    "chatId": "1289660893",
-    "message": "Hello API",
-    "parseMode": null
+    "message": "Hello from command line!",
+    "parseMode": "HTML"
   }'
 ```
 
-#### Ask Deepseek
-```bash
-curl -X POST http://localhost:3000/api/deepseek/ask \
-  -H "Authorization: Bearer <TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "question": "What is Node.js?"
-  }'
-```
-
-### JavaScript/Axios
+### Send Message dengan JavaScript
 
 ```javascript
 const axios = require('axios');
 
-// Login
-const loginRes = await axios.post('http://localhost:3000/auth/login', {
-  username: 'admin',
-  password: 'admin'
-});
-
-const token = loginRes.data.token;
-
-// Send Telegram message
-const headers = { Authorization: `Bearer ${token}` };
-
 await axios.post('http://localhost:3000/api/telegram/send', {
-  chatId: '1289660893',
-  message: 'Hello from API'
-}, { headers });
-
-// Ask Deepseek
-const aiRes = await axios.post('http://localhost:3000/api/deepseek/ask', {
-  question: 'What is Node.js?'
-}, { headers });
-
-console.log(aiRes.data.data.answer);
+  message: 'Hello from Node.js!',
+  parseMode: 'HTML'
+});
 ```
+
+---
 
 ## Notes
 
-- Token JWT berlaku selama 24 jam
-- Default username/password: `admin:admin` (ubah di production!)
-- Pastikan `JWT_SECRET` diganti dengan string yang aman
-- Semua API response mengikuti format `{ success, data/message, error? }`
+- Service ini didesain untuk **personal use** (1 user)
+- Tidak ada authentication - pastikan WEBHOOK_URL dan API endpoint aman
+- Media disimpan dengan nama: `{timestamp}-{original_filename}`
+- Log files di-rotate setiap hari otomatis
+- Deepseek integration adalah optional
+- Support S3-compatible storage: AWS S3, Minio, DigitalOcean Spaces, Wasabi, dll
+
+---
+
+## License
+
+MIT
+
+## Support
+
+Issues dan suggestions bisa dibuka di repo ini.
+
 
 

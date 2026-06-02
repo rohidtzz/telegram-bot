@@ -23,6 +23,7 @@ function updateEnvFile(filePath) {
   
   let jwtSecretFound = false;
   let jwtRefreshSecretFound = false;
+  let webhookSecretFound = false;
   
   const updatedLines = lines.map((line) => {
     if (line.startsWith('JWT_SECRET=') && !line.includes('JWT_REFRESH_SECRET')) {
@@ -38,6 +39,13 @@ function updateEnvFile(filePath) {
       console.log(`✅ Generated JWT_REFRESH_SECRET`);
       console.log(`   Length: ${newSecret.length} characters`);
       return `JWT_REFRESH_SECRET=${newSecret}`;
+    }
+    if (line.startsWith('WEBHOOK_SECRET=')) {
+      webhookSecretFound = true;
+      const newSecret = generateSecret();
+      console.log(`✅ Generated WEBHOOK_SECRET`);
+      console.log(`   Length: ${newSecret.length} characters`);
+      return `WEBHOOK_SECRET=${newSecret}`;
     }
     return line;
   });
@@ -58,6 +66,14 @@ function updateEnvFile(filePath) {
     console.log(`   Length: ${newSecret.length} characters`);
   }
 
+  if (!webhookSecretFound) {
+    console.warn(`⚠️  WEBHOOK_SECRET not found in ${filePath}, adding it...`);
+    const newSecret = generateSecret();
+    updatedLines.push(`WEBHOOK_SECRET=${newSecret}`);
+    console.log(`✅ Added WEBHOOK_SECRET`);
+    console.log(`   Length: ${newSecret.length} characters`);
+  }
+
   fs.writeFileSync(filePath, updatedLines.join('\n'));
   return true;
 }
@@ -74,6 +90,10 @@ if (envUpdated) {
 
 // Also show note about .env.example
 console.log(`\nℹ️  Keep .env.example with placeholder values (do not commit real secrets)`);
-console.log(`\n📝 Token Configuration:`);
+console.log(`\n📝 Generated Secrets:`);
+console.log(`   - JWT_SECRET: For access token signing`);
+console.log(`   - JWT_REFRESH_SECRET: For refresh token signing`);
+console.log(`   - WEBHOOK_SECRET: For webhook verification (optional)`);
+console.log(`\n⏱️  Token Expiration:`);
 console.log(`   - ACCESS_TOKEN_EXPIRES_IN=5m (or 5m, 1h, etc)`);
 console.log(`   - REFRESH_TOKEN_EXPIRES_IN=7d (or 30d, 14d, etc)`);

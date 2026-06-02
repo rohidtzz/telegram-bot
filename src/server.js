@@ -4,9 +4,9 @@ const { PORT, BOT_TOKEN, DEEPSEEK_API_KEY } = require("./config");
 const logger = require("./utils/logger");
 
 // Routes
-const authRoutes = require("./routes/auth.routes");
 const telegramRoutes = require("./routes/telegram.routes");
 const deepseekRoutes = require("./routes/deepseek.routes");
+const webhookRoutes = require("./routes/webhook.routes");
 
 const app = express();
 
@@ -19,7 +19,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check endpoint (no auth required)
+// Health check endpoint
 app.get("/health", (req, res) => {
   return res.status(200).json({
     success: true,
@@ -27,12 +27,12 @@ app.get("/health", (req, res) => {
   });
 });
 
-// Auth routes (no auth required)
-app.use("/auth", authRoutes);
+// Webhook routes - for Telegram updates
+app.use("/webhooks", webhookRoutes);
 
-// Protected routes - require access token
+// API routes - no auth required for personal use
 app.use("/api/telegram", telegramRoutes);
-app.use("/api/deepseek", deepseekRoutes);
+// app.use("/api/deepseek", deepseekRoutes);
 
 // 404 handler
 app.use((req, res) => {
