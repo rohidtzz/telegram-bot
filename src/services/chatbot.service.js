@@ -12,6 +12,19 @@ Perintah tersedia:
 Kirim pesan apapun untuk chat dengan AI!`;
 
 /**
+ * Convert markdown format to HTML for Telegram
+ * Converts **text** to <b>text</b> for bold
+ * Converts *text* to <i>text</i> for italic
+ * @param {string} text - Text with markdown format
+ * @returns {string} - Text with HTML format
+ */
+function markdownToHtml(text) {
+  // Convert **text** to <b>text</b>
+  text = text.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+  return text;
+}
+
+/**
  * Handle incoming telegram message
  * @param {object} message - Telegram message object
  * @returns {Promise<string>} - Response message
@@ -63,15 +76,16 @@ async function handleChatMessage(userId, userMessage) {
       content: msg.content
     }));
 
-    // Call Deepseek API
-    const systemPrompt = "You are a helpful assistant. Respond in the same language as the user's question.";
+    // Call Deepseek API with Indonesian system prompt
+    const systemPrompt = "Kamu adalah asisten yang membantu dan ramah. Selalu respond dalam bahasa Indonesia yang baik dan benar.";
     const result = await deepseekRepository.askQuestionWithHistory(messages, systemPrompt);
 
     // Save assistant response to history
     await chatHistory.addMessage(userId, "assistant", result.answer);
 
     logger.info(`Chat processed for user ${userId}`);
-    return result.answer;
+    // Convert markdown format to HTML for Telegram display
+    return markdownToHtml(result.answer);
   } catch (error) {
     logger.error(`Error in handleChatMessage: ${error.message}`);
     return `❌ Error: ${error.message}`;

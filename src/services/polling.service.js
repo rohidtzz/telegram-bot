@@ -94,8 +94,8 @@ async function handleUpdate(update) {
     // Handle the message using chatbot service
     const response = await chatbotService.handleMessage(message);
 
-    // Send response back to user
-    await telegramRepository.sendMessage(chatId, response);
+    // Send response back to user with HTML parseMode for formatting support
+    await telegramRepository.sendMessage(chatId, response, "HTML");
   } catch (error) {
     logger.error(`Error handling update: ${error.message}`);
   }

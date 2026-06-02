@@ -8,7 +8,7 @@ async function askQuestion(question, systemPrompt = null) {
     throw new Error("DEEPSEEK_API_KEY is not configured");
   }
 
-  const defaultSystemPrompt = "You are a helpful assistant. Respond in the same language as the user's question.";
+  const defaultSystemPrompt = "Kamu adalah asisten yang membantu dan ramah. Selalu respond dalam bahasa Indonesia yang baik dan benar.";
   const finalSystemPrompt = systemPrompt || defaultSystemPrompt;
 
   const response = await axios.post(
@@ -54,7 +54,7 @@ async function askQuestionWithHistory(messages, systemPrompt = null) {
     throw new Error("DEEPSEEK_API_KEY is not configured");
   }
 
-  const defaultSystemPrompt = "You are a helpful assistant. Respond in the same language as the user's question.";
+  const defaultSystemPrompt = "Kamu adalah asisten yang membantu dan ramah. Selalu respond dalam bahasa Indonesia yang baik dan benar.";
   const finalSystemPrompt = systemPrompt || defaultSystemPrompt;
 
   // Build messages array with system prompt at the beginning
