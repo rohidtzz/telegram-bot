@@ -146,8 +146,13 @@ async function handleDocumentMessage(message) {
 
     logger.info(`File "${fileName}" downloaded (${fileContent.length} chars)`);
 
-    // Save file content as user message with file label
-    const labeledContent = `[File: ${fileName}]\n\n${fileContent}`;
+    // Build labeled content: include caption if present
+    const caption = message.caption || "";
+    let labeledContent = `[File: ${fileName}]`;
+    if (caption.trim()) {
+      labeledContent += `\n[Pesan dari user: ${caption}]`;
+    }
+    labeledContent += `\n\n${fileContent}`;
     await chatHistory.addMessage(userId, "user", labeledContent);
 
     // Get chat history for context
