@@ -49,13 +49,14 @@ async function askQuestion(question, systemPrompt = null) {
  * @param {string} systemPrompt - System prompt for the AI
  * @returns {Promise<object>} - Response with answer
  */
-async function askQuestionWithHistory(messages, systemPrompt = null) {
+async function askQuestionWithHistory(messages, systemPrompt = null, model = null) {
   if (!DEEPSEEK_API_KEY) {
     throw new Error("DEEPSEEK_API_KEY is not configured");
   }
 
   const defaultSystemPrompt = "Kamu adalah asisten yang membantu dan ramah. Selalu respond dalam bahasa Indonesia yang baik dan benar.";
   const finalSystemPrompt = systemPrompt || defaultSystemPrompt;
+  const selectedModel = model || DEEPSEEK_MODEL;
 
   // Build messages array with system prompt at the beginning
   const allMessages = [
@@ -69,7 +70,7 @@ async function askQuestionWithHistory(messages, systemPrompt = null) {
   const response = await axios.post(
     DEEPSEEK_API_URL,
     {
-      model: DEEPSEEK_MODEL,
+      model: selectedModel,
       messages: allMessages,
       temperature: 0.7,
       max_tokens: 1000

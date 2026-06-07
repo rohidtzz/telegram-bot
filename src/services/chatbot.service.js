@@ -2,12 +2,14 @@ const deepseekRepository = require("../repositories/deepseek.repository");
 const telegramRepository = require("../repositories/telegram.repository");
 const chatHistory = require("../models/chatHistory");
 const logger = require("../utils/logger");
+const { AVAILABLE_MODELS, DEEPSEEK_MODEL } = require("../config");
 
 const HELP_MESSAGE = `🤖 Bot Deepseek AI
 
 Perintah tersedia:
 /help - Tampilkan bantuan ini
 /reset - Reset chat history (mulai percakapan baru)
+/model - Lihat atau ganti model AI
 
 Kirim pesan apapun untuk chat dengan AI!`;
 
@@ -48,12 +50,54 @@ async function handleMessage(message) {
       return "✅ Chat history telah direset. Mulai percakapan baru!";
     }
 
+    if (text === "/model" || text.startsWith("/model ")) {
+      return await handleModelCommand(userId, text);
+    }
+
     // Handle regular chat message
     return await handleChatMessage(userId, text);
   } catch (error) {
     logger.error(`Error handling message: ${error.message}`);
     return `❌ Error: ${error.message}`;
   }
+}
+
+/**
+ * Handle /model command - show or change AI model
+ * @param {number} userId - Telegram user ID
+ * @param {string} text - Full command text
+ * @returns {Promise<string>} - Response message
+ */
+async function handleModelCommand(userId, text) {
+  const currentModel = (await chatHistory.getUserModel(userId)) || DEEPSEEK_MODEL;
+  const args = text.split(" ").filter(Boolean);
+
+  // /model without args — show current model & available models
+  if (args.length === 1) {
+    const modelList = AVAILABLE_MODELS.map((m) => {
+      const marker = m === currentModel ? " ✅ (dipakai)" : "";
+      return `• \`${m}\`${marker}`;
+    }).join("\n");
+
+    return `🤖 <b>Model AI</b>\n\nModel saat ini: <b>${currentModel}</b>\n\nModel tersedia:\n${modelList}\n\nGunakan <code>/model &lt;nama_model&gt;</code> untuk ganti model.\nContoh: <code>/model deepseek-v4-flash</code>`;
+  }
+
+  // /model <model_name> — switch model
+  const requestedModel = args[1].toLowerCase();
+
+  // Find matching model (case-insensitive)
+  const matchedModel = AVAILABLE_MODELS.find(
+    (m) => m.toLowerCase() === requestedModel
+  );
+
+  if (!matchedModel) {
+    const modelList = AVAILABLE_MODELS.map((m) => `• \`${m}\``).join("\n");
+    return `❌ Model <b>${args[1]}</b> tidak dikenal.\n\nModel tersedia:\n${modelList}`;
+  }
+
+  await chatHistory.setUserModel(userId, matchedModel);
+
+  return `✅ Model berhasil diganti ke <b>${matchedModel}</b>`;
 }
 
 /**
@@ -78,7 +122,8 @@ async function handleChatMessage(userId, userMessage) {
 
     // Call Deepseek API with Indonesian system prompt
     const systemPrompt = "Kamu adalah asisten yang membantu dan ramah. Selalu respond dalam bahasa Indonesia yang baik dan benar.";
-    const result = await deepseekRepository.askQuestionWithHistory(messages, systemPrompt);
+    const userModel = await chatHistory.getUserModel(userId);
+    const result = await deepseekRepository.askQuestionWithHistory(messages, systemPrompt, userModel);
 
     // Save assistant response to history
     await chatHistory.addMessage(userId, "assistant", result.answer);

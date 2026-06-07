@@ -43,6 +43,7 @@ function createTables() {
       CREATE TABLE IF NOT EXISTS chat_sessions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER UNIQUE NOT NULL,
+        model TEXT DEFAULT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
@@ -61,6 +62,13 @@ function createTables() {
     `);
 
     logger.info("Database tables created or already exist");
+  });
+
+  // Migration: add model column if table already existed without it
+  db.run(`ALTER TABLE chat_sessions ADD COLUMN model TEXT DEFAULT NULL`, (err) => {
+    if (err && !err.message.includes("duplicate column")) {
+      logger.warn(`Migration (model column): ${err.message}`);
+    }
   });
 }
 
@@ -165,6 +173,51 @@ function clearChatHistory(userId) {
 }
 
 /**
+ * Set user's preferred model
+ * @param {number} userId - Telegram user ID
+ * @param {string} model - Model name
+ * @returns {Promise<void>}
+ */
+function setUserModel(userId, model) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `UPDATE chat_sessions SET model = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`,
+      [model, userId],
+      function (err) {
+        if (err) {
+          logger.error(`Failed to set user model: ${err.message}`);
+          reject(err);
+        } else {
+          resolve();
+        }
+      }
+    );
+  });
+}
+
+/**
+ * Get user's preferred model
+ * @param {number} userId - Telegram user ID
+ * @returns {Promise<string|null>}
+ */
+function getUserModel(userId) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT model FROM chat_sessions WHERE user_id = ?`,
+      [userId],
+      (err, row) => {
+        if (err) {
+          logger.error(`Failed to get user model: ${err.message}`);
+          reject(err);
+        } else {
+          resolve(row ? row.model : null);
+        }
+      }
+    );
+  });
+}
+
+/**
  * Close database connection
  */
 function closeDatabase() {
@@ -191,5 +244,7 @@ module.exports = {
   addMessage,
   getChatHistory,
   clearChatHistory,
+  setUserModel,
+  getUserModel,
   closeDatabase
 };
