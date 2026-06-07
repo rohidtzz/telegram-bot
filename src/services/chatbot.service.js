@@ -29,37 +29,54 @@ function markdownToHtml(text) {
 /**
  * Handle incoming telegram message
  * @param {object} message - Telegram message object
- * @returns {Promise<string>} - Response message
+ * @returns {Promise<string|null>} - Response message or null
  */
 async function handleMessage(message) {
   try {
     const userId = message.from.id;
-    const text = message.text.trim();
-    const chatId = message.chat.id;
 
     // Ensure user session exists
     await chatHistory.getOrCreateSession(userId);
 
-    // Handle commands
-    if (text === "/help") {
-      return HELP_MESSAGE;
+    // Route to appropriate handler
+    if (message.text) {
+      return await handleTextMessage(message);
     }
-
-    if (text === "/reset") {
-      await chatHistory.clearChatHistory(userId);
-      return "✅ Chat history telah direset. Mulai percakapan baru!";
+    if (message.document) {
+      return await handleDocumentMessage(message);
     }
-
-    if (text === "/model" || text.startsWith("/model ")) {
-      return await handleModelCommand(userId, text);
-    }
-
-    // Handle regular chat message
-    return await handleChatMessage(userId, text);
+    return null;
   } catch (error) {
     logger.error(`Error handling message: ${error.message}`);
     return `❌ Error: ${error.message}`;
   }
+}
+
+/**
+ * Handle text message (commands & chat)
+ * @param {object} message - Telegram message object
+ * @returns {Promise<string>} - Response message
+ */
+async function handleTextMessage(message) {
+  const userId = message.from.id;
+  const text = message.text.trim();
+
+  // Handle commands
+  if (text === "/help") {
+    return HELP_MESSAGE;
+  }
+
+  if (text === "/reset") {
+    await chatHistory.clearChatHistory(userId);
+    return "✅ Chat history telah direset. Mulai percakapan baru!";
+  }
+
+  if (text === "/model" || text.startsWith("/model ")) {
+    return await handleModelCommand(userId, text);
+  }
+
+  // Handle regular chat message
+  return await handleChatMessage(userId, text);
 }
 
 /**
@@ -98,6 +115,62 @@ async function handleModelCommand(userId, text) {
   await chatHistory.setUserModel(userId, matchedModel);
 
   return `✅ Model berhasil diganti ke <b>${matchedModel}</b>`;
+}
+
+/**
+ * Handle document/file message
+ * Only accepts .txt and .md files, rejects others
+ * @param {object} message - Telegram message object with document
+ * @returns {Promise<string>} - Response message
+ */
+async function handleDocumentMessage(message) {
+  const userId = message.from.id;
+  const doc = message.document;
+  const fileName = doc.file_name || "unknown";
+  const fileId = doc.file_id;
+
+  // Validate file extension
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  if (ext !== "txt" && ext !== "md") {
+    return `❌ Format file <b>${ext || "tanpa ekstensi"}</b> tidak didukung.\n\nHanya file <b>.txt</b> dan <b>.md</b> yang diterima.`;
+  }
+
+  try {
+    // Download file from Telegram
+    const fileBuffer = await telegramRepository.downloadFile(fileId);
+    const fileContent = fileBuffer.toString("utf-8");
+
+    if (!fileContent.trim()) {
+      return "❌ File kosong, tidak ada teks yang bisa diproses.";
+    }
+
+    logger.info(`File "${fileName}" downloaded (${fileContent.length} chars)`);
+
+    // Save file content as user message with file label
+    const labeledContent = `[File: ${fileName}]\n\n${fileContent}`;
+    await chatHistory.addMessage(userId, "user", labeledContent);
+
+    // Get chat history for context
+    const history = await chatHistory.getChatHistory(userId);
+    const messages = history.map((msg) => ({
+      role: msg.role,
+      content: msg.content
+    }));
+
+    // Call Deepseek API
+    const systemPrompt = "Kamu adalah asisten yang membantu dan ramah. Selalu respond dalam bahasa Indonesia yang baik dan benar.";
+    const userModel = await chatHistory.getUserModel(userId);
+    const result = await deepseekRepository.askQuestionWithHistory(messages, systemPrompt, userModel);
+
+    // Save assistant response
+    await chatHistory.addMessage(userId, "assistant", result.answer);
+
+    logger.info(`File "${fileName}" processed for user ${userId}`);
+    return markdownToHtml(result.answer);
+  } catch (error) {
+    logger.error(`Error handling file "${fileName}": ${error.message}`);
+    return `❌ Gagal memproses file: ${error.message}`;
+  }
 }
 
 /**

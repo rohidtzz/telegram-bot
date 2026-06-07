@@ -81,15 +81,19 @@ async function handleUpdate(update) {
       return;
     }
 
-    // Only process text messages
-    if (!message.text) {
+    // Only process text messages and documents
+    if (!message.text && !message.document) {
       return;
     }
 
     const chatId = message.chat.id;
     const userId = message.from?.id;
 
-    logger.info(`Message from user ${userId}: ${message.text.substring(0, 50)}`);
+    if (message.text) {
+      logger.info(`Message from user ${userId}: ${message.text.substring(0, 50)}`);
+    } else if (message.document) {
+      logger.info(`Document from user ${userId}: ${message.document.file_name || "unnamed"}`);
+    }
 
     // Handle the message using chatbot service
     const response = await chatbotService.handleMessage(message);
