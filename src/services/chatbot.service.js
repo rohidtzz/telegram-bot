@@ -27,6 +27,26 @@ function markdownToHtml(text) {
 }
 
 /**
+ * Count the ratio of printable characters in a buffer
+ * Used to detect if a file is text or binary
+ * @param {Buffer} buffer - File buffer
+ * @returns {number} - Ratio of printable chars (0-1)
+ */
+function countPrintableRatio(buffer) {
+  if (buffer.length === 0) return 0;
+  let printable = 0;
+  const sampleSize = Math.min(buffer.length, 4096);
+  for (let i = 0; i < sampleSize; i++) {
+    const byte = buffer[i];
+    // ASCII printable (32-126) + common whitespace (9, 10, 13) + high bytes for UTF-8 (128+)
+    if ((byte >= 32 && byte <= 126) || byte === 9 || byte === 10 || byte === 13 || byte >= 128) {
+      printable++;
+    }
+  }
+  return printable / sampleSize;
+}
+
+/**
  * Handle incoming telegram message
  * @param {object} message - Telegram message object
  * @returns {Promise<string|null>} - Response message or null
@@ -119,7 +139,7 @@ async function handleModelCommand(userId, text) {
 
 /**
  * Handle document/file message
- * Only accepts .txt and .md files, rejects others
+ * Accepts all text-based files, rejects binary
  * @param {object} message - Telegram message object with document
  * @returns {Promise<string>} - Response message
  */
@@ -128,20 +148,29 @@ async function handleDocumentMessage(message) {
   const doc = message.document;
   const fileName = doc.file_name || "unknown";
   const fileId = doc.file_id;
+  const fileSize = doc.file_size || 0;
 
-  // Validate file extension
-  const ext = fileName.split(".").pop()?.toLowerCase();
-  if (ext !== "txt" && ext !== "md") {
-    return `❌ Format file <b>${ext || "tanpa ekstensi"}</b> tidak didukung.\n\nHanya file <b>.txt</b> dan <b>.md</b> yang diterima.`;
+  // Reject files larger than 5 MB
+  const MAX_SIZE = 5 * 1024 * 1024;
+  if (fileSize > MAX_SIZE) {
+    const sizeMB = (fileSize / (1024 * 1024)).toFixed(1);
+    return `❌ File terlalu besar (${sizeMB} MB). Maksimal <b>5 MB</b>.`;
   }
 
   try {
     // Download file from Telegram
     const fileBuffer = await telegramRepository.downloadFile(fileId);
+
+    // Try to decode as UTF-8 text, replace invalid chars
     const fileContent = fileBuffer.toString("utf-8");
 
-    if (!fileContent.trim()) {
-      return "❌ File kosong, tidak ada teks yang bisa diproses.";
+    // Check if content looks like readable text (not purely binary)
+    const printableRatio = countPrintableRatio(fileBuffer);
+    if (printableRatio < 0.5 || !fileContent.trim()) {
+      if (!fileContent.trim()) {
+        return "❌ File kosong, tidak ada teks yang bisa diproses.";
+      }
+      return `❌ File <b>${fileName}</b> tidak bisa dibaca sebagai teks (binary).\n\nHanya file berbasis teks yang didukung (.txt, .md, .json, .csv, .log, .xml, .js, .py, .html, .css, .sql, .sh, .yml, .env, dll).`;
     }
 
     logger.info(`File "${fileName}" downloaded (${fileContent.length} chars)`);
