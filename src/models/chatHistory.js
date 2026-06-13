@@ -26,8 +26,7 @@ function initializeDatabase() {
         reject(err);
       } else {
         logger.info("Connected to SQLite database");
-        createTables();
-        resolve();
+        createTables(resolve, reject);
       }
     });
   });
@@ -36,7 +35,7 @@ function initializeDatabase() {
 /**
  * Create tables if they don't exist
  */
-function createTables() {
+function createTables(resolve, reject) {
   db.serialize(() => {
     // Table for storing chat sessions (one per user)
     db.run(`
@@ -44,6 +43,7 @@ function createTables() {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER UNIQUE NOT NULL,
         model TEXT DEFAULT NULL,
+        persona TEXT DEFAULT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
@@ -61,14 +61,29 @@ function createTables() {
       )
     `);
 
-    logger.info("Database tables created or already exist");
-  });
+    // Migration: add model column if table already existed without it
+    db.run(`ALTER TABLE chat_sessions ADD COLUMN model TEXT DEFAULT NULL`, (err) => {
+      if (err && !err.message.includes("duplicate column")) {
+        logger.warn(`Migration (model column): ${err.message}`);
+      }
+    });
 
-  // Migration: add model column if table already existed without it
-  db.run(`ALTER TABLE chat_sessions ADD COLUMN model TEXT DEFAULT NULL`, (err) => {
-    if (err && !err.message.includes("duplicate column")) {
-      logger.warn(`Migration (model column): ${err.message}`);
-    }
+    // Migration: add persona column
+    db.run(`ALTER TABLE chat_sessions ADD COLUMN persona TEXT DEFAULT NULL`, (err) => {
+      if (err && !err.message.includes("duplicate column")) {
+        logger.warn(`Migration (persona column): ${err.message}`);
+      }
+    });
+
+    // Final no-op to signal all previous statements are done
+    db.run(`SELECT 1`, (err) => {
+      if (err) {
+        reject(err);
+      } else {
+        logger.info("Database tables created or already exist");
+        resolve();
+      }
+    });
   });
 }
 
@@ -196,6 +211,51 @@ function setUserModel(userId, model) {
 }
 
 /**
+ * Set user's custom persona (system prompt)
+ * @param {number} userId - Telegram user ID
+ * @param {string|null} persona - Custom system prompt or null to reset
+ * @returns {Promise<void>}
+ */
+function setUserPersona(userId, persona) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      `UPDATE chat_sessions SET persona = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`,
+      [persona, userId],
+      function (err) {
+        if (err) {
+          logger.error(`Failed to set user persona: ${err.message}`);
+          reject(err);
+        } else {
+          resolve();
+        }
+      }
+    );
+  });
+}
+
+/**
+ * Get user's custom persona
+ * @param {number} userId - Telegram user ID
+ * @returns {Promise<string|null>}
+ */
+function getUserPersona(userId) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      `SELECT persona FROM chat_sessions WHERE user_id = ?`,
+      [userId],
+      (err, row) => {
+        if (err) {
+          logger.error(`Failed to get user persona: ${err.message}`);
+          reject(err);
+        } else {
+          resolve(row ? row.persona : null);
+        }
+      }
+    );
+  });
+}
+
+/**
  * Get user's preferred model
  * @param {number} userId - Telegram user ID
  * @returns {Promise<string|null>}
@@ -246,5 +306,7 @@ module.exports = {
   clearChatHistory,
   setUserModel,
   getUserModel,
+  setUserPersona,
+  getUserPersona,
   closeDatabase
 };

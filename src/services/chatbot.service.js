@@ -10,6 +10,7 @@ Perintah tersedia:
 /help - Tampilkan bantuan ini
 /reset - Reset chat history (mulai percakapan baru)
 /model - Lihat atau ganti model AI
+/persona - Atur persona AI (custom system prompt)
 
 Kirim pesan apapun untuk chat dengan AI!`;
 
@@ -95,6 +96,10 @@ async function handleTextMessage(message) {
     return await handleModelCommand(userId, text);
   }
 
+  if (text === "/persona" || text.startsWith("/persona ")) {
+    return await handlePersonaCommand(userId, text);
+  }
+
   // Handle regular chat message
   return await handleChatMessage(userId, text);
 }
@@ -135,6 +140,35 @@ async function handleModelCommand(userId, text) {
   await chatHistory.setUserModel(userId, matchedModel);
 
   return `✅ Model berhasil diganti ke <b>${matchedModel}</b>`;
+}
+
+/**
+ * Handle /persona command - show, set, or reset custom persona
+ * @param {number} userId - Telegram user ID
+ * @param {string} text - Full command text
+ * @returns {Promise<string>} - Response message
+ */
+async function handlePersonaCommand(userId, text) {
+  const args = text.replace("/persona", "").trim();
+
+  // /persona without args — show current persona
+  if (!args) {
+    const currentPersona = await chatHistory.getUserPersona(userId);
+    if (currentPersona) {
+      return `🎭 <b>Persona saat ini:</b>\n\n<i>${currentPersona}</i>\n\nGunakan <code>/persona &lt;deskripsi&gt;</code> untuk mengubah.\nGunakan <code>/persona reset</code> untuk kembali ke default.`;
+    }
+    return `🎭 <b>Persona</b>\n\nBelum ada persona custom. Menggunakan persona default.\n\nGunakan <code>/persona &lt;deskripsi&gt;</code> untuk mengatur persona AI.\n\nContoh:\n<code>/persona Kamu adalah seorang chef profesional yang ahli masakan Indonesia</code>`;
+  }
+
+  // /persona reset — clear custom persona
+  if (args.toLowerCase() === "reset") {
+    await chatHistory.setUserPersona(userId, null);
+    return "✅ Persona direset ke default.";
+  }
+
+  // /persona <text> — set custom persona
+  await chatHistory.setUserPersona(userId, args);
+  return `✅ Persona berhasil diatur:\n\n<i>${args}</i>`;
 }
 
 /**
@@ -191,8 +225,9 @@ async function handleDocumentMessage(message) {
       content: msg.content
     }));
 
-    // Call Deepseek API
-    const systemPrompt = "Kamu adalah asisten yang membantu dan ramah. Selalu respond dalam bahasa Indonesia yang baik dan benar.";
+    // Call Deepseek API with user's persona or default
+    const userPersona = await chatHistory.getUserPersona(userId);
+    const systemPrompt = userPersona || "Kamu adalah asisten yang membantu dan ramah. Selalu respond dalam bahasa Indonesia yang baik dan benar.";
     const userModel = await chatHistory.getUserModel(userId);
     const result = await deepseekRepository.askQuestionWithHistory(messages, systemPrompt, userModel);
 
@@ -227,8 +262,9 @@ async function handleChatMessage(userId, userMessage) {
       content: msg.content
     }));
 
-    // Call Deepseek API with Indonesian system prompt
-    const systemPrompt = "Kamu adalah asisten yang membantu dan ramah. Selalu respond dalam bahasa Indonesia yang baik dan benar.";
+    // Use custom persona or default system prompt
+    const userPersona = await chatHistory.getUserPersona(userId);
+    const systemPrompt = userPersona || "Kamu adalah asisten yang membantu dan ramah. Selalu respond dalam bahasa Indonesia yang baik dan benar.";
     const userModel = await chatHistory.getUserModel(userId);
     const result = await deepseekRepository.askQuestionWithHistory(messages, systemPrompt, userModel);
 
